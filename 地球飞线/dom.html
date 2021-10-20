@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>飞线地球</title>
+    <script src="./js/three.min.js"></script>
+    <script src="./js/tween.min.js"></script>
+    <script src="./js/jquery-1.12.min.js"></script>
+    <script src='./js/threeGeoJSON.js'></script>
+    <script src='./js/OrbitControls.js'></script>
+    <script src="./js/MeshLine.js"></script>
+</head>
+<style>
+    html,
+    body {
+        overflow: hidden;
+    }
+</style>
+
+<body>
+    <div id="three"></div>
+</body>
+<script>
+
+    // 相机 场景 渲染器 控制器
+    var camera, scene, renderer, controls;
+    // 图片渲染：背景，坐标点，线条
+    var bg, pointMap, lineMap;
+    // 飞线长度
+    var lineLength = 30
+    var trailPoints = [], meshLines = [], meshs = []
+    var pointsDate = [{
+        position: [116.416262, 39.922213],
+        title: '北京'
+    },
+    {
+        position: [-73.967449, 40.908823],
+        title: '纽约'
+    },
+    {
+        position: [2.370044, 48.870461],
+        title: '巴黎'
+    },
+    {
+        position: [29.63489, 26.067309],
+        title: '开罗'
+    }]
+    // 起点和终点数组
+    var starPot = [116.416262, 39.922213],
+        endArr = [[-73.967449, 40.908823], [2.370044, 48.870461], [29.63489, 26.067309]];
+
+    function loadTexture() {
+        // 创建纹理贴图
+        var loader = new THREE.TextureLoader()
+        bg = loader.load('./img/bg.jpg')
+        pointMap = loader.load('./img/dot.png')
+        lineMap = loader.load('./img/stroke.png')
+    }
+
+    function initThree() {
+        // 场景，相机，渲染器
+        scene = new THREE.Scene()
+        scene.background = bg
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000)
+        camera.position.set(0, 200, 0)
+        camera.up.set(0, 0, 1)
+        camera.lookAt(scene.position)
+        renderer = new THREE.WebGLRenderer({})
+        renderer.setSize(window.innerWidth, window.innerHeight)
+        document.getElementById('three').appendChild(renderer.domElement)
+    }
+
+    // 将地理坐标转化为以地球半径作为长度的向量
+    function transformVector(lg, lt, r) {
+        lg = lg * Math.PI / 180
+        lt = lt * Math.PI / 180
+        return new THREE.Vector3(
+            Math.cos(lg) * Math.cos(lt) * r,
+            Math.sin(lg) * Math.cos(lt) * r,
+            Math.sin(lt) * r
+        )
+    }
+    // 添加地球模型
+    function addEarth() {
+        var earth = new THREE.Mesh(new THREE.SphereGeometry(50, 42, 42), new THREE.MeshBasicMaterial({
+            color: 0x25306b,
+            wireframe: false,//不渲染线框
+        }))
+        earth.rotation.y = Math.PI / 2
+        earth.rotation.x = Math.PI / 2
+        scene.add(earth)
+        $.getJSON('./js/word.geojson', function (data) {
+            // 绘制模型
+            drawThreeGeo(data, 50, 'sphere', {
+                color: 0xffffff,
+                transparent: true
+            }, earth)
+        })
+    }
+    // 构建飞线
+    function createFlyLine(start, target) {
+        // 构建飞线路径
+        var curve = generatPath(start, target)
+        // 获取路径中的50个点的数组
+        var curvePoints = curve.getPoints(50)
+        trailPoints.push(curvePoints)
+        // 创建以线条长度数量的点，初始时候点坐标都为起点
+        var points = new Float32Array(lineLength * 3)
+
+        for (var [index, point] of curvePoints.entries()) {
+            var { x, y, z } = curvePoints[0]
+            points[index * 3] = x
+            points[index * 3 + 1] = y
+            points[index * 3 + 2] = z
+        }
+        // 以点做线
+        var ml = new THREE.MeshLine()
+        ml.setGeometry(points, function (p) {
+            return p
+        })
+        // 线条赋予材质
+        var mat = new THREE.MeshLineMaterial({
+            useMap: true,
+            map: lineMap,
+            color: new THREE.Color(0xF75000),
+            opacity: 0.7,
+            resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+            sizeAttenuation: false,
+            lineWidth: 20,
+            near: camera.near,
+            far: camera.far,
+            depthTest: true,
+            transparent: true
+        })
+        meshLines.push(ml)
+        var mesh = new THREE.Mesh(ml.geometry, mat)
+        scene.add(mesh)
+        // 飞线集合
+        meshs.push(mesh)
+    }
+
+    function generatPath(startLonLat, tartgetLonLat) {
+        var R = 50
+        var startPos = transformVector(...startLonLat, R)
+        var targetPos = transformVector(...tartgetLonLat, R)
+        // 向量之和
+        var midPos = new THREE.Vector3().addVectors(startPos, targetPos)
+        var midLonLat = [0.5 * (startLonLat[0] + tartgetLonLat[0]), 0.5 * (startLonLat[1] + tartgetLonLat[1])]
+        //中值经纬向量
+        var midLonLatPos = transformVector(...midLonLat, R)
+        // 获取两个点之间距离的一半
+        var r = startPos.distanceTo(targetPos) * 0.5
+        // 计算向量之和所需要要的系数
+        var factor = (R + r) / (midPos.length() * 1.28)
+        var mid = midPos.multiplyScalar(factor)
+        // 返回一条平滑曲线的对象
+        return new THREE.CatmullRomCurve3([startPos, mid, targetPos])
+    }
+
+    function addPoints(data) {
+        data.forEach(function (obj, index) {
+            var point = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshBasicMaterial({
+                map: pointMap,
+                // color: 0xffffff,
+                transparent: true,
+                side: THREE.DoubleSide
+            }))
+            point.position.copy(transformVector(...obj.position, 51))
+            point.lookAt(0, 0, 0)
+            scene.add(point)
+        })
+    }
+    function animation() {
+        renderer.render(scene, camera)
+        controls && controls.update()
+        TWEEN.update()
+        requestAnimationFrame(animation)
+    }
+
+    function addControls() {
+        controls = new THREE.OrbitControls(camera, renderer.domElement)
+    }
+
+    function updateLine() {
+        // 飞线运动的时间
+        var time = 7000
+        // 创建了tween对象，需要激活它，让它开始动画，通过不断变换点的位置来达到移动线的效果
+        new TWEEN.Tween({ x: 0 })
+            .to({ x: 50 + lineLength }, time)
+            .onUpdate(function () {
+                var _this = this
+                trailPoints.forEach(function (obj, index) {
+                    var points = obj
+                    var length = Math.ceil(_this.x)
+                    var tp = new Float32Array(lineLength * 3)
+                    if (length < lineLength) {
+                        for (var i = 0; i < lineLength; i++) {
+                            var k = i < length ? i : length
+                            var { x, y, z } = points[k]
+                            tp[3 * i] = x
+                            tp[3 * i + 1] = y
+                            tp[3 * i + 2] = z
+                        }
+                    } else if (length < 30) {
+                        for (var i = 0; i < lineLength; i++) {
+                            var k = length - lineLength + i
+                            var { x, y, z } = points[k]
+                            tp[3 * i] = x
+                            tp[3 * i + 1] = y
+                            tp[3 * i + 2] = z
+                        }
+                    } else {
+                        for (var i = 0; i < lineLength; i++) {
+                            var k = length - lineLength + i >= 50 ? 50 - 1 : length - lineLength + i
+                            var { x, y, z } = points[k]
+                            tp[3 * i] = x
+                            tp[3 * i + 1] = y
+                            tp[3 * i + 2] = z
+                        }
+                    }
+
+                    meshLines[index].setGeometry(tp, function (t) {
+                        return t
+                    })
+                })
+
+            })
+            .onComplete(function () {
+                updateLine(time)
+            })
+            .start()
+    }
+
+    function addLine(starPot, endArr) {
+        // 以起点和终点坐标为基础建立飞线
+        endArr.forEach(function (endPot) {
+            createFlyLine(starPot, endPot)
+        })
+    }
+
+    function main() {
+        loadTexture()
+        initThree()
+        addEarth()
+        addControls()
+        addPoints(pointsDate)
+        addLine(starPot, endArr)
+        updateLine()
+        animation()
+    }
+    main()
+
+</script>
+
+</html>

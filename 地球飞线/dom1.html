@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <script src="./js/three.min.js"></script>
+    <script src="./js/tween.min.js"></script>
+    <script src='./js/echarts.min.js'></script>
+    <script src="./js/jquery-1.12.min.js"></script>
+    <script src='./js/threeGeoJSON.js'></script>
+    <script src='./js/OrbitControls.js'></script>
+    <script src='./js/CSS3DRenderer.js'></script>
+    <script src="./js/world.js"></script>
+</head>
+<style>
+
+    html,
+    body {
+        overflow: hidden;
+        background: #000;
+    }
+
+    .echart {
+        width: 200px;
+        height: 200px;
+        background: red;
+        z-index: 10000;
+        /* position: absolute; */
+        /* left: 0;
+        top: 0; */
+    }
+</style>
+
+<body>
+    <div id="webgl" style="width:512px;height: 512px;float: left;"></div>
+    <div id="echart" style="width:512px;height: 256px;margin-left: 620px;"></div>
+    <script>
+        function areaHight(chartInstance, length, call) {
+            chartInstance.dataLen = length;
+            chartInstance.curData = 0;
+            chartInstance.arr = [];
+            // 数据下标组成数组
+            for (var i = 0; i < chartInstance.dataLen; i++) {
+                chartInstance.arr.push(i);
+            }
+            clearInterval(chartInstance.hightTimer);
+            chartInstance.hightTimer = setInterval(function () {
+                if (chartInstance.curData === chartInstance.dataLen) {
+                    chartInstance.curData = 0;
+                }
+                // 取消高亮
+                chartInstance.dispatchAction({
+                    type: 'downplay',
+                    seriesIndex: 0,
+                    dataIndex: chartInstance.arr
+                });
+                // 高亮地图区域
+                chartInstance.dispatchAction({
+                    type: 'highlight',
+                    seriesIndex: 0,
+                    dataIndex: chartInstance.curData
+                });
+                chartInstance.curData++;
+                call()
+            }, 0);
+        }
+        var myChart = echarts.init(document.getElementById('echart'));
+        var mapData = [
+            {
+                "name": "克拉玛依区",
+                "value": 20698
+            },
+            {
+                "name": "乌尔禾区",
+                "value": 47715
+            },
+            {
+                "name": "白碱滩区",
+                "value": 46211
+            },
+            {
+                "name": "独山子区",
+                "value": 8265
+            }
+        ]
+
+        option = {
+            tooltip: {
+                trigger: 'item',
+                backgroundColor: 'transparent',
+                formatter: function (params) {
+                    return '<div class="tooltip"><h6>' + params.name + '</h6><br>' +
+                        '<p><em>' + params.value + '</em>件</p></div>';
+                }
+            },
+            visualMap: {
+                show: false,
+                min: 0,
+                max: 47715,
+                text: ['高', '低'],
+                realtime: false,
+                calculable: true,
+                inRange: {
+                    color: ['#01c7fe', '#2a21dd']
+                },
+                itemWidth: 20,
+                itemHeight: 155,
+                textStyle: {
+                    color: '#54bbff',
+                    fontSize: 17
+                },
+                right: 40,
+                bottom: 30
+            },
+            series: [{
+                name: '办件量',
+                type: 'map',
+                left: 0,
+                top: 10,
+                right: 0,
+                bottom: 0,
+                zoom: 1,
+                selectedMode: 'single',
+                mapType: 'world',
+                itemStyle: {
+                    normal: {
+                        label: {
+                            show: false,
+                            textStyle: {
+                                fontSize: 14,
+                                color: '#fff'
+                            }
+                        },
+                        borderColor: '#31f6ff'
+                    },
+                    emphasis: {
+                        label: {
+                            fontSize: 16,
+                            fontWeight: 'bold',
+                            color: '#fff'
+                        }
+                    }
+                },
+                data: mapData
+            }]
+        };
+        // option.series[0].data[0].value = (Math.random() * 100).toFixed(2) - 0;
+        myChart.setOption(option, true);
+        
+        areaHight(myChart, mapData.length, function () {
+            var thiscancas = document.getElementById("echart").getElementsByTagName('canvas')[0]
+            scene.changeTextureT(thiscancas)
+        });
+        class Basescene {
+            constructor(dom) {
+                this.id = (new Date()).getTime();
+                this.dom = dom;
+                this.divWidth = this.dom.offsetWidth;
+                this.divHeight = this.dom.offsetHeight;
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(45, this.divWidth / this.divHeight, 1, 2000);
+                this.renderer = new THREE.WebGLRenderer({
+                    alpha: true,
+                    antialias: true
+                });
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.init();
+            }
+            init() {
+                this.camera.position.set(0, 0, 20);
+                this.camera.lookAt(this.scene.position);
+                this.renderer.setClearColor(0x222222);
+                this.renderer.setSize(this.divWidth, this.divHeight);
+                this.dom.appendChild(this.renderer.domElement);
+                // this.scene.add(new THREE.AxesHelper(10));
+                this.animate();
+                // this.addLight();
+            }
+            addLight() {
+                const light = new THREE.AmbientLight(0xffffff);
+                this.scene.add(light);
+            }
+            render() {
+                this.renderer.render(this.scene, this.camera);
+            }
+            animate = () => {
+                this.request = requestAnimationFrame(this.animate);
+                this.render();
+            }
+
+            addPlane() {
+                var geometry = new THREE.SphereGeometry(5, 42, 42);
+                var material = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    wireframe: false,
+                    // transparent: true,
+                    // opacity: 0.4
+                });
+                this.plane = new THREE.Mesh(geometry, material);
+                this.scene.add(this.plane);
+            }
+            changeTextureE(texture) {
+                this.plane.material.map = new THREE.TextureLoader().load(texture)
+                this.plane.material.needsUpdate = true
+            }
+            changeTextureT(texture) {
+                this.plane.material.map = new THREE.CanvasTexture(texture)
+                this.plane.material.needsUpdate = true
+            }
+        }
+        const dom = document.getElementById("webgl");
+        const scene = new Basescene(dom);
+        scene.addPlane();
+        setTimeout(() => {
+            var thiscancas = document.getElementById("echart").getElementsByTagName('canvas')[0]
+            scene.changeTextureT(thiscancas)
+        }, 2000);
+        setTimeout(() => {
+            var texture = myChart.getDataURL({
+                pixelRatio: 4,
+                backgroundColor: '#fff'
+            });
+            scene.changeTextureE(texture)
+        }, 4000);
+    </script>
+</body>
+
+</html>
